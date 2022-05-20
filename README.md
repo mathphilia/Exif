@@ -14,10 +14,11 @@ exiftoolを入れるのが面倒なのでExifを読み取るコードを書い�
 
 ## Exifの全体構造
 
-<div align="center"><img src="https://github.com/mathphilia/Exif/blob/main/images/Figure1.png?raw=true"></div>  
+![](images/Figure1.png)  
+
 上記がJPEG圧縮データの構造である。ExifはAPP1に入っている。Exif IFDのみがExifの情報ではなく、APP1全体がExif情報を構成する。  
-ヘッダにはAPP1セグメントに関する情報が書かれている。具体的には大きく4つに分かれており、最初の2bytesがAPP1マーカ(APP1であることを示す目印。値は常に `b'\xff\xe1'` )、続く2bytesがAPP1全体からAPP1マーカを除いた部分の長さ(big endian)、続く6bytesがExif識別子(Exifであることを示す目印。値は常に `b'Exif\x00\x00'` )、続く8bytesはTIFFヘッダである。TIFFヘッダはさらに3つの部分に分かれる。最初の2bytesがバイトオーダー識別子(APP1内の数値の表現方法を示す。big endianなら `b'MM'` , little endianなら `b'II'` )、続く2bytesがTIFFバージョン(調べた限りでは常に42)、最後の4bytesは0th IFDのオフセット(TIFFヘッダの0byte目が0)である。なお、TIFFヘッダ内の数値も最初の2bytesで示されるバイトオーダーに従う。例として、APP1の長さ(APP1マーカ除く)が1234bytesで、バイトオーダーがlittle endianであり、0th IFDがTIFFヘッダの直後から始まる場合、APP1ヘッダは `b'\xff\xe1\x04\xd2\x45\x78\x69\x66\x00\x00\x49\x49\x2a\x00\x08\x00\x00\x00'` となる。  
-<div align="center"><img src="https://github.com/mathphilia/Exif/blob/main/images/Figure2.png?raw=true"></div>
+ヘッダにはAPP1セグメントに関する情報が書かれている。具体的には大きく4つに分かれており、最初の2bytesがAPP1マーカ(APP1であることを示す目印。値は常に`b'\xff\xe1'`)、続く2bytesがAPP1全体からAPP1マーカを除いた部分の長さ(big endian)、続く6bytesがExif識別子(Exifであることを示す目印。値は常に`b'Exif\x00\x00'`)、続く8bytesはTIFFヘッダである。TIFFヘッダはさらに3つの部分に分かれる。最初の2bytesがバイトオーダー識別子(APP1内の数値の表現方法を示す。big endianなら`b'MM'`, little endianなら`b'II'`)、続く2bytesがTIFFバージョン(調べた限りでは常に42)、最後の4bytesは0th IFDのオフセット(TIFFヘッダの0byte目が0)である。なお、TIFFヘッダ内の数値も最初の2bytesで示されるバイトオーダーに従う。例として、APP1の長さ(APP1マーカ除く)が1234bytesで、バイトオーダーがlittle endianであり、0th IFDがTIFFヘッダの直後から始まる場合、APP1ヘッダは`b'\xff\xe1\x04\xd2\x45\x78\x69\x66\x00\x00\x49\x49\x2a\x00\x08\x00\x00\x00'`となる。  
+![](images/Figure2.png)
 
 ## IFDの概略
 
@@ -27,9 +28,10 @@ IFD(Image File Directory)はAPP1セグメントにおいて情報を格納する
 ## フィールドの構成
 
 各フィールドはすべて12bytesで構成されており、具体的にはタグ番号、タイプ、カウント、値(のオフセット)の4つの部分からなる。冒頭2bytesのタグ番号はそのフィールドが保持する情報の種類を表す。例えばタグ番号が259(0x0103)ならそのフィールドには画像の圧縮方法が格納されていることになる。タグ番号とデータ種別の対応表はPIL.ExifTags.pyのTAGSやGPSTAGSを見ると分かる。また、[参考](#参考)に貼った仕様書も参照されたい。続く2bytesのタイプは、格納された情報のデータ形式を示す。タイプの値とデータ形式の対応はTIFF Rivision6.0に従い、以下のように定められている。  
-<div align="center"><img src="https://github.com/mathphilia/Exif/blob/main/images/Figure3.png?raw=true"></div>  
-なお、灰色で書かれているものはExifでは使われない。(123, 456, 789)のように、1つのフィールドに複数の値が格納されることもある(複数のデータタイプが混ざることはない)。また、ASCIIおよびUNDEFINEDは、文字列/バイト列の集まりとしてではなく、文字/バイトの集まりとして、すなわち('e', 'x', 'i', 'f', '\x00')や(b'\x03', b'\x01', b'\x04')のように格納される。このようなタプル(?)の長さが、タイプに続く4bytesに書かれるカウントである。つまり、タイプがASCIIでカウントが5ならデータサイズは1×5=5bytes、タイプがRATIONALでカウントが3(例: (22/7, 355/113, 103993/33102))ならデータサイズは8×3=24になる。カウントに続く4bytesに書かれる「値のオフセット」は、そのフィールドの保持する実データがどこにあるかを示す。各フィールドは12bytes固定なので、一定以上データサイズが大きいとフィールドに格納できないため、後続IFDのオフセットの後にまとめて保管する。オフセットの起点は、APP1ヘッダの末尾にある0th IFDのオフセットの起点と同じく、TIFFヘッダの0byte目である。ただし、実データ全体の長さ(タイプがRATIONALでカウントが3なら24bytes)が4bytes以下なら、「値のオフセット」の部分にオフセットでなく実データそのものが左詰めで書かれる。1st IFDの場合はこの後にサムネイルの画像データが続く。なお、このサムネイルデータのオフセットは1st IFD内のJPEGInterchangeFormatタグ(PIL.ExifTags.pyのTAGSでは'JpegIFOffset'に当たる)に書かれている。フィールドのバイト列の例を2つ挙げる。まず、バイトオーダーがlittle endianのExifで、タグ番号が256(0x0100, ImageWidth)、タイプがSHORT、カウントが1、実データが4800(0x12c0)のとき、このフィールドのバイト列は `b'\x00\x01\x03\x00\x01\x00\x00\x00\xc0\x12\x00\x00'` となる。また、バイトオーダーがbig endianのExifで、タグ番号が306(0x0132, DateTime)、タイプがASCII、カウントが20、実データが'2112:09:03 12:34:56\x00'のとき、実データが4bytesを越えるため後続IFDのオフセットの後に保管される。実データがTIFFヘッダの0byte目の1000bytes後から始まる場合、このフィールドのバイト列は `b'\x01\x32\x00\x02\x00\x00\x00\x14\x00\x00\x03\xe8'` となる。  
-<div align="center"><img src="https://github.com/mathphilia/Exif/blob/main/images/Figure4.png?raw=true"></div>
+![](images/Figure3.png)  
+
+なお、灰色で書かれているものはExifでは使われない。(123, 456, 789)のように、1つのフィールドに複数の値が格納されることもある(複数のデータタイプが混ざることはない)。また、ASCIIおよびUNDEFINEDは、文字列/バイト列の集まりとしてではなく、文字/バイトの集まりとして、すなわち('e', 'x', 'i', 'f', '\x00')や(b'\x03', b'\x01', b'\x04')のように格納される。このようなタプル(?)の長さが、タイプに続く4bytesに書かれるカウントである。つまり、タイプがASCIIでカウントが5ならデータサイズは1×5=5bytes、タイプがRATIONALでカウントが3(例: (22/7, 355/113, 103993/33102))ならデータサイズは8×3=24になる。カウントに続く4bytesに書かれる「値のオフセット」は、そのフィールドの保持する実データがどこにあるかを示す。各フィールドは12bytes固定なので、一定以上データサイズが大きいとフィールドに格納できないため、後続IFDのオフセットの後にまとめて保管する。オフセットの起点は、APP1ヘッダの末尾にある0th IFDのオフセットの起点と同じく、TIFFヘッダの0byte目である。ただし、実データ全体の長さ(タイプがRATIONALでカウントが3なら24bytes)が4bytes以下なら、「値のオフセット」の部分にオフセットでなく実データそのものが左詰めで書かれる。1st IFDの場合はこの後にサムネイルの画像データが続く。なお、このサムネイルデータのオフセットは1st IFD内のJPEGInterchangeFormatタグ(PIL.ExifTags.pyのTAGSでは'JpegIFOffset'に当たる)に書かれている。フィールドのバイト列の例を2つ挙げる。まず、バイトオーダーがlittle endianのExifで、タグ番号が256(0x0100, ImageWidth)、タイプがSHORT、カウントが1、実データが4800(0x12c0)のとき、このフィールドのバイト列は`b'\x00\x01\x03\x00\x01\x00\x00\x00\xc0\x12\x00\x00'`となる。また、バイトオーダーがbig endianのExifで、タグ番号が306(0x0132, DateTime)、タイプがASCII、カウントが20、実データが'2112:09:03 12:34:56\x00'のとき、実データが4bytesを越えるため後続IFDのオフセットの後に保管される。実データがTIFFヘッダの0byte目の1000bytes後から始まる場合、このフィールドのバイト列は`b'\x01\x32\x00\x02\x00\x00\x00\x14\x00\x00\x03\xe8'`となる。  
+![](images/Figure4.png)
 
 ## 参考
 
